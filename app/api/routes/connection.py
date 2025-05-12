@@ -8,11 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
 from app.models.schemas import ConnectionRequest, ConnectionResponse, VpnStatus
-from app.network.vpn import VPNManager
-
-# Creamos una instancia global del gestor VPN
-# En una aplicación real, esto podría gestionarse con inyección de dependencias
-vpn_manager = VPNManager()
+from app.network.vpn_client import vpn_client  # Usar la implementación real
 
 router = APIRouter()
 
@@ -27,7 +23,20 @@ async def connect_to_vpn(request: ConnectionRequest):
     Returns:
         Resultado de la operación de conexión
     """
-    result = await vpn_manager.connect(request.serverId)
+    # Buscar información del servidor
+    from app.core.config import settings
+    
+    server = None
+    for s in settings.VPN_SERVERS:
+        if s["id"] == request.serverId:
+            server = s
+            break
+    
+    if not server:
+        raise HTTPException(status_code=404, detail=f"Servidor con ID {request.serverId} no encontrado")
+    
+    # Conectar usando la implementación real
+    result = await vpn_client.connect(server["ip"], server["port"])
     
     return ConnectionResponse(
         success=result["success"],
@@ -43,7 +52,7 @@ async def disconnect_from_vpn():
     Returns:
         Resultado de la operación de desconexión
     """
-    result = await vpn_manager.disconnect()
+    result = await vpn_client.disconnect()
     
     return ConnectionResponse(
         success=result["success"],
@@ -55,16 +64,5 @@ async def disconnect_from_vpn():
 async def get_vpn_status():
     """
     Obtiene el estado actual de la conexión VPN.
-    Este endpoint es requerido por el frontend para mostrar información de conexión.
     """
-    # Implement actual VPN status logic based on your requirements
-    return {
-        "connected": False,
-        "uptime": 0,
-        "bytesReceived": 0,
-        "bytesSent": 0,
-        "latency": 0,
-        "vpnIp": None,
-        "server_id": None,
-        "message": "No hay conexión VPN activa"
-    }
+    return vpn_client.get_status()

@@ -1,263 +1,415 @@
 """
-Lógica principal de la VPN educativa resistente a ataques cuánticos.
+Implementación de un servidor VPN con resistencia post-cuántica.
 
-Este módulo implementa la funcionalidad principal de la VPN, integrando
-los componentes de criptografía post-cuántica (CRYSTALS-Kyber), cifrado
-simétrico (AES-256-GCM) y gestión de interfaces de red (TUN/TAP).
+Este módulo implementa un servidor VPN real utilizando interfaces TUN/TAP
+y criptografía post-cuántica para proteger las conexiones.
 """
 import asyncio
-import time
-import os
-import ipaddress
-import random
 import logging
-from typing import Dict, Any, Optional, Callable, Tuple
+import ipaddress
+import os
+import time
+import socket
+import struct
+from typing import Dict, List, Any, Optional, Set
+import json
 
-from app.core.config import settings
 from app.crypto.kyber import KyberManager
 from app.crypto.symmetric import AESGCMCipher
-from app.network.tun import TunManager
-from app.models.schemas import VpnStatus
+from app.network.tun import TunDevice
+from app.core.config import settings
 
 # Configurar logger
 logger = logging.getLogger(__name__)
 
-class VPNManager:
-    """
-    Gestor principal de la VPN educativa resistente a ataques cuánticos.
+# Puerto para el servidor VPN
+VPN_PORT = 1194
+
+class VPNClient:
+    """Representación de un cliente conectado al servidor VPN."""
     
-    Esta clase integra todos los componentes necesarios para implementar
-    una VPN educativa que utiliza criptografía post-cuántica para el
-    intercambio de claves y cifrado simétrico para la protección de datos.
+    def __init__(self, client_id: str, vpn_ip: str, writer: asyncio.StreamWriter, 
+                 aes_cipher: AESGCMCipher):
+        self.id = client_id
+        self.vpn_ip = vpn_ip
+        self.writer = writer
+        self.cipher = aes_cipher
+        self.last_activity = time.time()
+        self.bytes_sent = 0
+        self.bytes_received = 0
+        self.connected_since = time.time()
+
+class VPNServer:
+    """
+    Servidor VPN real con soporte para criptografía post-cuántica.
+    
+    Implementa un servidor VPN completo que maneja múltiples clientes,
+    enrutamiento de tráfico y cifrado de datos usando intercambio de claves
+    Kyber y cifrado AES-GCM.
     """
     
-    def __init__(self):
-        """Inicializa el gestor de VPN."""
+    def __init__(self, subnet: str = "10.8.0.0/24", 
+                 port: int = VPN_PORT):
+        """
+        Inicializa el servidor VPN.
+        
+        Args:
+            subnet: Subred para asignar a los clientes VPN
+            port: Puerto para escuchar conexiones
+        """
+        self.subnet = subnet
+        self.port = port
+        self.tun = None
+        self.server = None
+        self.running = False
+        self.clients: Dict[str, VPNClient] = {}  # client_id -> VPNClient
+        self.ip_to_client: Dict[str, str] = {}   # vpn_ip -> client_id
+        self.available_ips: List[str] = []
+        
+        # Inicializar Kyber para intercambio de claves
         self.kyber = KyberManager(parameter_set=settings.KYBER_PARAMETER)
-        self.aes = None  # Se inicializará durante la conexión
-        self.tun = None  # Se inicializará durante la conexión
         
-        # Estado de la conexión
-        self.connected = False
-        self.server = None
-        self.connection_time = 0
-        self.vpn_ip = None
-        self.bytes_sent = 0
-        self.bytes_received = 0
-        self.latency = 0
+        # Generar par de claves del servidor
+        self.server_keypair = None
         
-        # Tareas en segundo plano
-        self.status_task = None
+        # Inicializar subred VPN
+        self._init_ip_pool()
+        
+        logger.info(f"Servidor VPN inicializado, subnet: {subnet}, puerto: {port}")
     
-    async def connect(self, server_id: str) -> Dict[str, Any]:
+    def _init_ip_pool(self):
+        """Inicializa el pool de direcciones IP disponibles para clientes."""
+        try:
+            network = ipaddress.IPv4Network(self.subnet)
+            # Reservar primera IP (red) y segunda IP (servidor)
+            # Todas las demás están disponibles para clientes
+            self.available_ips = [str(ip) for ip in list(network.hosts())[1:]]
+            logger.info(f"Pool de IPs inicializado con {len(self.available_ips)} direcciones disponibles")
+        except Exception as e:
+            logger.error(f"Error al inicializar pool de IPs: {str(e)}")
+            raise
+    
+    def _get_next_ip(self) -> Optional[str]:
         """
-        Establece una conexión VPN con el servidor especificado.
+        Obtiene la siguiente IP disponible para un cliente.
+        
+        Returns:
+            Dirección IP o None si no hay disponibles
+        """
+        if not self.available_ips:
+            return None
+        return self.available_ips.pop(0)
+    
+    def _release_ip(self, ip: str):
+        """
+        Devuelve una IP al pool de disponibles.
         
         Args:
-            server_id: ID del servidor al que conectar
-            
-        Returns:
-            Diccionario con información de la conexión establecida
+            ip: Dirección IP a liberar
         """
-        if self.connected:
-            logger.warning("Intento de conexión mientras ya existe una conexión activa")
-            return {"success": False, "message": "Ya existe una conexión VPN activa"}
-        
-        # Buscar el servidor solicitado
-        server = None
-        for s in settings.VPN_SERVERS:
-            if s["id"] == server_id:
-                server = s
-                break
-        
-        if not server:
-            logger.error(f"Servidor con ID {server_id} no encontrado")
-            return {"success": False, "message": f"Servidor con ID {server_id} no encontrado"}
-        
-        logger.info(f"Iniciando conexión a servidor VPN: {server['name']} ({server['ip']})")
-        
-        try:
-            # Paso 1: Iniciar negociación con criptografía post-cuántica (Kyber)
-            logger.debug("Generando par de claves Kyber")
-            keypair = self.kyber.generate_keypair()
-            
-            # En una implementación real, aquí enviaríamos la clave pública al servidor
-            # y recibiríamos un ciphertext para desencapsular la clave compartida
-            
-            # Simulamos el intercambio para este ejemplo educativo
-            logger.debug("Simulando intercambio de claves Kyber con el servidor")
-            shared_key, _ = self.kyber.encapsulate()
-            
-            # Paso 2: Inicializar cifrado AES con la clave derivada de Kyber
-            logger.debug("Inicializando cifrado AES-256-GCM")
-            self.aes = AESGCMCipher(key=shared_key)
-            
-            # Paso 3: Configurar interfaz TUN
-            self.tun = TunManager(name=settings.TUN_NAME)
-            
-            # Asignar IP del rango VPN
-            subnet = ipaddress.IPv4Network(settings.VPN_SUBNET)
-            self.vpn_ip = str(subnet[2])  # Primera IP disponible después de red y gateway
-            
-            logger.info(f"Asignando IP VPN: {self.vpn_ip}")
-            
-            # En una implementación real, aquí crearíamos realmente la interfaz TUN
-            # await self.tun.create_interface(self.vpn_ip)
-            # self.tun.set_packet_callback(self._process_packet)
-            # asyncio.create_task(self.tun.start())
-            
-            # Actualizar estado
-            self.server = server
-            self.connected = True
-            self.connection_time = time.time()
-            self.bytes_sent = 0
-            self.bytes_received = 0
-            self.latency = server.get("latency", 0)
-            
-            # Iniciar tarea de monitoreo en segundo plano
-            self.status_task = asyncio.create_task(self._update_status_task())
-            
-            logger.info(f"Conexión VPN establecida: {self.vpn_ip} -> {server['name']}")
-            
-            return {
-                "success": True,
-                "message": f"Conexión establecida con {server['name']}",
-                "vpnIp": self.vpn_ip
-            }
-            
-        except Exception as e:
-            logger.error(f"Error al establecer conexión VPN: {str(e)}")
-            # Limpiar recursos en caso de error
-            await self._cleanup()
-            return {
-                "success": False,
-                "message": f"Error al establecer conexión: {str(e)}"
-            }
+        if ip not in self.available_ips:
+            self.available_ips.append(ip)
     
-    async def disconnect(self) -> Dict[str, Any]:
-        """
-        Finaliza la conexión VPN activa.
-        
-        Returns:
-            Diccionario con el resultado de la operación
-        """
-        if not self.connected:
-            return {"success": True, "message": "No hay conexión activa"}
-        
-        logger.info("Desconectando VPN")
-        
-        try:
-            await self._cleanup()
-            return {"success": True, "message": "Desconexión exitosa"}
-        except Exception as e:
-            logger.error(f"Error al desconectar VPN: {str(e)}")
-            return {"success": False, "message": f"Error al desconectar: {str(e)}"}
-    
-    async def _cleanup(self):
-        """Limpia todos los recursos de la conexión VPN."""
-        # Cancelar tareas en segundo plano
-        if self.status_task:
-            self.status_task.cancel()
-            try:
-                await self.status_task
-            except asyncio.CancelledError:
-                pass
-            self.status_task = None
-        
-        # Cerrar interfaz TUN si existe
-        if self.tun:
-            try:
-                await self.tun.stop()
-            except Exception as e:
-                logger.error(f"Error al cerrar interfaz TUN: {str(e)}")
-            
-            self.tun = None
-        
-        # Reiniciar estado
-        self.connected = False
-        self.server = None
-        self.connection_time = 0
-        self.vpn_ip = None
-        self.bytes_sent = 0
-        self.bytes_received = 0
-        self.latency = 0
-        self.aes = None
-        
-        logger.info("Recursos VPN liberados")
-    
-    async def get_status(self) -> VpnStatus:
-        """
-        Obtiene el estado actual de la conexión VPN.
-        
-        Returns:
-            Estado actual de la VPN
-        """
-        if not self.connected:
-            return VpnStatus(
-                connected=False,
-                uptime=0,
-                bytesReceived=0,
-                bytesSent=0,
-                latency=0,
-                vpnIp=None,
-                server_id=None
-            )
-        
-        # Calcular tiempo de conexión
-        uptime = int(time.time() - self.connection_time)
-        
-        return VpnStatus(
-            connected=True,
-            uptime=uptime,
-            bytesReceived=self.bytes_received,
-            bytesSent=self.bytes_sent,
-            latency=self.latency,
-            vpnIp=self.vpn_ip,
-            server_id=self.server["id"] if self.server else None
-        )
-    
-    async def _update_status_task(self):
-        """Tarea en segundo plano para actualizar estadísticas de la VPN."""
-        try:
-            while self.connected:
-                # En una implementación real, estas estadísticas vendrían
-                # de mediciones reales del tráfico y pings al servidor
-                
-                # Simular algunas estadísticas para propósitos educativos
-                self.latency = random.randint(
-                    max(1, self.server.get("latency", 30) - 10),
-                    self.server.get("latency", 30) + 10
-                )
-                
-                # Simular tráfico
-                traffic_increment = random.randint(1024, 8192)
-                self.bytes_sent += traffic_increment
-                self.bytes_received += traffic_increment * 2  # Más datos recibidos que enviados
-                
-                await asyncio.sleep(1.0)  # Actualizar cada segundo
-        except asyncio.CancelledError:
-            # Tarea cancelada normalmente durante la desconexión
-            pass
-        except Exception as e:
-            logger.error(f"Error en tarea de actualización de estado: {str(e)}")
-            # No reactivamos la tarea automáticamente para evitar bucles de error
-    
-    async def _process_packet(self, packet: bytes):
-        """
-        Procesa un paquete recibido de la interfaz TUN.
-        
-        En una implementación real, este método cifraría el paquete
-        con AES-GCM y lo enviaría al servidor VPN.
-        
-        Args:
-            packet: Datos del paquete recibido
-        """
-        if not self.connected or not self.aes:
+    async def start(self):
+        """Inicia el servidor VPN."""
+        if self.running:
+            logger.warning("El servidor VPN ya está en ejecución")
             return
         
         try:
-            # Aquí iría la lógica para procesar, cifrar y enviar el paquete
-            # En una implementación real de VPN
+            # Generar par de claves Kyber
+            logger.info("Generando par de claves Kyber para el servidor...")
+            self.server_keypair = self.kyber.generate_keypair()
+            
+            # Crear y configurar interfaz TUN
+            logger.info("Creando interfaz TUN...")
+            self.tun = TunDevice(name="tun0", mode="tun")
+            
+            # Obtener la IP del servidor (primera IP disponible después de la dirección de red)
+            network = ipaddress.IPv4Network(self.subnet)
+            server_ip = str(list(network.hosts())[0])
+            
+            # Crear interfaz TUN con la IP del servidor
+            netmask = str(network.netmask)
+            await self.tun.create_interface(server_ip, netmask)
+            
+            # Configurar enrutamiento
+            await self.tun.setup_routing(self.subnet)
+            
+            # Configurar callback para procesar paquetes
+            self.tun.set_packet_callback(self._process_tun_packet)
+            
+            # Iniciar procesamiento de paquetes TUN
+            tun_task = asyncio.create_task(self.tun.start())
+            
+            # Iniciar servidor TCP
+            server = await asyncio.start_server(
+                self._handle_client,
+                '0.0.0.0',
+                self.port
+            )
+            
+            addr = server.sockets[0].getsockname()
+            logger.info(f'Servidor VPN escuchando en {addr}')
+            
+            self.server = server
+            self.running = True
+            
+            # Mantener servidor en ejecución
+            async with server:
+                await server.serve_forever()
+        
+        except Exception as e:
+            logger.error(f"Error al iniciar servidor VPN: {str(e)}")
+            await self.stop()
+            raise
+    
+    async def stop(self):
+        """Detiene el servidor VPN."""
+        self.running = False
+        
+        # Cerrar todas las conexiones de clientes
+        for client_id, client in list(self.clients.items()):
+            await self._disconnect_client(client_id)
+        
+        # Detener servidor TCP
+        if self.server:
+            self.server.close()
+            await self.server.wait_closed()
+            self.server = None
+        
+        # Detener interfaz TUN
+        if self.tun:
+            await self.tun.stop()
+            self.tun = None
+        
+        logger.info("Servidor VPN detenido")
+    
+    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        """
+        Maneja una nueva conexión de cliente.
+        
+        Args:
+            reader: Stream de lectura del socket
+            writer: Stream de escritura del socket
+        """
+        addr = writer.get_extra_info('peername')
+        client_id = f"{addr[0]}:{addr[1]}"
+        logger.info(f"Nueva conexión desde {client_id}")
+        
+        try:
+            # Realizar handshake Kyber para establecer clave compartida
+            client_public_key = await self._receive_data(reader)
+            
+            # Encapsular clave compartida usando la clave pública del cliente
+            shared_key, ciphertext = self.kyber.encapsulate(client_public_key)
+            
+            # Enviar ciphertext al cliente
+            await self._send_data(writer, ciphertext)
+            
+            # Inicializar cifrado AES con la clave compartida
+            aes_cipher = AESGCMCipher(key=shared_key)
+            
+            # Asignar IP VPN al cliente
+            vpn_ip = self._get_next_ip()
+            if not vpn_ip:
+                logger.error(f"No hay IPs disponibles para asignar al cliente {client_id}")
+                writer.close()
+                await writer.wait_closed()
+                return
+            
+            # Enviar configuración al cliente
+            config = {
+                "vpn_ip": vpn_ip,
+                "subnet": self.subnet,
+                "routes": [self.subnet]  # Rutas que deben ir por la VPN
+            }
+            
+            config_data = json.dumps(config).encode()
+            encrypted_config = aes_cipher.encrypt(config_data)
+            
+            # Enviar nonce y ciphertext
+            await self._send_data(writer, encrypted_config["nonce"] + encrypted_config["ciphertext"])
+            
+            # Registrar cliente
+            client = VPNClient(client_id, vpn_ip, writer, aes_cipher)
+            self.clients[client_id] = client
+            self.ip_to_client[vpn_ip] = client_id
+            
+            logger.info(f"Cliente {client_id} conectado con IP VPN {vpn_ip}")
+            
+            # Procesar datos del cliente
+            await self._handle_client_data(client_id, reader)
+            
+        except asyncio.CancelledError:
+            # Manejo normal de cancelación
             pass
         except Exception as e:
-            logger.error(f"Error al procesar paquete: {str(e)}")
+            logger.error(f"Error en manejo de cliente {client_id}: {str(e)}")
+        finally:
+            # Desconectar cliente en caso de error o desconexión
+            await self._disconnect_client(client_id)
+    
+    async def _handle_client_data(self, client_id: str, reader: asyncio.StreamReader):
+        """
+        Procesa los datos recibidos de un cliente.
+        
+        Args:
+            client_id: ID del cliente
+            reader: Stream de lectura del socket
+        """
+        client = self.clients.get(client_id)
+        if not client:
+            return
+        
+        try:
+            while self.running:
+                # Recibir tamaño del paquete
+                size_data = await reader.readexactly(4)
+                if not size_data:
+                    break
+                
+                packet_size = struct.unpack("!I", size_data)[0]
+                
+                # Recibir paquete cifrado
+                encrypted_data = await reader.readexactly(packet_size)
+                if not encrypted_data:
+                    break
+                
+                # Dividir en nonce y ciphertext (primeros 12 bytes son el nonce)
+                nonce = encrypted_data[:12]
+                ciphertext = encrypted_data[12:]
+                
+                # Descifrar paquete
+                try:
+                    packet = client.cipher.decrypt(nonce, ciphertext)
+                    
+                    # Procesar el paquete IP (enviarlo a la interfaz TUN)
+                    await self.tun.send_packet(packet)
+                    
+                    # Actualizar estadísticas
+                    client.bytes_received += len(packet)
+                    client.last_activity = time.time()
+                    
+                except Exception as e:
+                    logger.error(f"Error al descifrar paquete de {client_id}: {str(e)}")
+                    continue
+        
+        except asyncio.IncompleteReadError:
+            # Conexión cerrada por el cliente
+            pass
+        except asyncio.CancelledError:
+            # Cancelación normal
+            pass
+        except Exception as e:
+            logger.error(f"Error procesando datos de {client_id}: {str(e)}")
+        finally:
+            # Desconectar cliente
+            await self._disconnect_client(client_id)
+    
+    async def _process_tun_packet(self, packet: bytes):
+        """
+        Procesa un paquete recibido de la interfaz TUN.
+        
+        Args:
+            packet: Datos del paquete IP
+        """
+        try:
+            # Extraer direcciones IP de origen y destino
+            if len(packet) < 20:  # Tamaño mínimo de una cabecera IPv4
+                return
+            
+            # Cabecera IPv4: versión y longitud cabecera (1 byte)
+            version_ihl = packet[0]
+            version = version_ihl >> 4
+            
+            if version != 4:  # Solo IPv4 por ahora
+                return
+            
+            # Direcciones IP están en posiciones 12-16 (origen) y 16-20 (destino)
+            src_ip = socket.inet_ntoa(packet[12:16])
+            dst_ip = socket.inet_ntoa(packet[16:20])
+            
+            # Determinar destinatario
+            client_id = self.ip_to_client.get(dst_ip)
+            if not client_id or client_id not in self.clients:
+                # No es un paquete para un cliente VPN
+                return
+            
+            client = self.clients[client_id]
+            
+            # Cifrar el paquete con la clave del cliente
+            encrypted = client.cipher.encrypt(packet)
+            
+            # Enviar al cliente
+            size_data = struct.pack("!I", len(encrypted["nonce"]) + len(encrypted["ciphertext"]))
+            
+            client.writer.write(size_data)
+            client.writer.write(encrypted["nonce"])
+            client.writer.write(encrypted["ciphertext"])
+            await client.writer.drain()
+            
+            # Actualizar estadísticas
+            client.bytes_sent += len(packet)
+            
+        except Exception as e:
+            logger.error(f"Error procesando paquete TUN: {str(e)}")
+    
+    async def _disconnect_client(self, client_id: str):
+        """
+        Desconecta a un cliente.
+        
+        Args:
+            client_id: ID del cliente a desconectar
+        """
+        client = self.clients.pop(client_id, None)
+        if not client:
+            return
+        
+        # Liberar IP
+        if client.vpn_ip:
+            self.ip_to_client.pop(client.vpn_ip, None)
+            self._release_ip(client.vpn_ip)
+        
+        # Cerrar conexión
+        try:
+            client.writer.close()
+            await client.writer.wait_closed()
+        except:
+            pass
+        
+        logger.info(f"Cliente {client_id} desconectado")
+    
+    async def _send_data(self, writer: asyncio.StreamWriter, data: bytes):
+        """
+        Envía datos con prefijo de longitud.
+        
+        Args:
+            writer: Stream de escritura
+            data: Datos a enviar
+        """
+        size = struct.pack("!I", len(data))
+        writer.write(size)
+        writer.write(data)
+        await writer.drain()
+    
+    async def _receive_data(self, reader: asyncio.StreamReader) -> bytes:
+        """
+        Recibe datos con prefijo de longitud.
+        
+        Args:
+            reader: Stream de lectura
+            
+        Returns:
+            Datos recibidos
+        """
+        # Leer tamaño (4 bytes, entero de red)
+        size_data = await reader.readexactly(4)
+        size = struct.unpack("!I", size_data)[0]
+        
+        # Leer datos
+        data = await reader.readexactly(size)
+        return data
+
+# Crear instancia global
+vpn_server = VPNServer(subnet=settings.VPN_SUBNET, port=VPN_PORT)
