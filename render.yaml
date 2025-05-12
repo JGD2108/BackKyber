@@ -1,20 +1,23 @@
+# render.yaml
 services:
   - type: web
     name: kyber-vpn-backend
     env: python
 
-    # 👇 pin the Python runtime
-    pythonVersion: "3.9.0"
-
-    # 👇 skip poetry by clearing POETRY_VERSION
+    # ──── Environment Vars ────────────────────────
     envVars:
+      # Pin Python 3.9.x (Render will install it)
+      - key: PYTHON_VERSION
+        value: "3.9.0"
+      # Skip Poetry entirely
       - key: POETRY_VERSION
         value: ""
 
-    # 👇 your own pip‐based install steps
+    # ──── Build ───────────────────────────────────
+    # These commands run in the system Python
     buildCommand: |
       python3 -m pip install --upgrade pip setuptools wheel
       python3 -m pip install -r requirements.txt
 
-    # 👇 start the app
+    # ──── Startup ─────────────────────────────────
     startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker
