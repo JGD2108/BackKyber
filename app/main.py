@@ -35,7 +35,8 @@ app.add_middleware(
     # Permitir cualquier origen en desarrollo
     allow_origins=["*"] if settings.DEBUG else [
         "http://localhost:3000", 
-        "https://frontkyber.vercel.app/"
+        "https://frontkyber.vercel.app/",
+        "https://frontkyber.vercel.app"
     ],
     allow_credentials=False,  # Cambiar a False cuando allow_origins=["*"]
     allow_methods=["*"],
