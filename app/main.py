@@ -35,8 +35,9 @@ app.add_middleware(
     # Permitir cualquier origen en desarrollo
     allow_origins=["*"] if settings.DEBUG else [
         "http://localhost:3000", 
-        "https://frontkyber.vercel.app/",
-        "https://frontkyber.vercel.app"
+        "https://frontkyber.vercel.app",
+        "https://backkyber.onrender.com"
+        
     ],
     allow_credentials=False,  # Cambiar a False cuando allow_origins=["*"]
     allow_methods=["*"],
@@ -61,8 +62,50 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    """Endpoint para verificar que la API está funcionando correctamente."""
-    return {"status": "ok"}
+    """Endpoint mejorado para verificación de salud compatible con Azure."""
+    import platform
+    import psutil
+    import datetime
+    
+    return {
+        "status": "ok",
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "version": "0.1.0",
+        "system": {
+            "python_version": platform.python_version(),
+            "platform": platform.platform(),
+            "cpu_percent": psutil.cpu_percent(),
+            "memory_percent": psutil.virtual_memory().percent
+        }
+    }
+
+@app.get("/api/status")
+async def global_status():
+    """
+    Endpoint de estado global accesible sin autenticación.
+    Proporciona información básica sobre el estado del servicio.
+    """
+    import datetime
+    import platform
+    import psutil
+    import time
+    
+    # Obtener información básica del sistema
+    cpu = psutil.cpu_percent(interval=0.1)
+    memory = psutil.virtual_memory()
+    
+    return {
+        "connected": False,  # Default state for unauthenticated access
+        "service_status": "online",
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "uptime": time.time() - psutil.boot_time(),
+        "system": {
+            "cpu_percent": cpu,
+            "memory_percent": memory.percent,
+            "python_version": platform.python_version(),
+        },
+        "message": "Servicio activo en Render.com"
+    }
 
 if __name__ == "__main__":
     import uvicorn
