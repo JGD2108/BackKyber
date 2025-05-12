@@ -2,10 +2,14 @@ services:
   - type: web
     name: kyber-vpn-backend
     env: python
-    runtime: python
-    poetryVersion: ""
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker
+    poetryVersion: ""             # disable Poetry
+    buildCommand: |               # install via the system Python
+      python3 -m pip install --upgrade pip setuptools wheel
+      python3 -m pip install -r requirements.txt
+    startCommand: |
+      echo "PATH = $PATH"
+      which gunicorn || echo "→ gunicorn not found"
+      gunicorn app.main:app -k uvicorn.workers.UvicornWorker
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: "3.9.0"
