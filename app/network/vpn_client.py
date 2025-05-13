@@ -80,13 +80,18 @@ class VPNClient:
         self.server_host = server_host
         self.server_port = server_port
         
+        logger.info(f"Iniciando conexión a {server_host}:{server_port}...")
+        self._update_status("connecting")
+        
         try:
-            # Notificar inicio de conexión
-            self._update_status("connecting")
+            # Set a connection timeout of 5 seconds
+            logger.info(f"Conectando al servidor VPN: {server_host}:{server_port}...")
+            connect_task = asyncio.open_connection(server_host, server_port)
+            reader, writer = await asyncio.wait_for(connect_task, timeout=5.0)
+            logger.info("Conexión TCP establecida correctamente")
             
-            # Conectar al servidor
-            logger.info(f"Conectando a {server_host}:{server_port}...")
-            self.reader, self.writer = await asyncio.open_connection(server_host, server_port)
+            self.reader = reader
+            self.writer = writer
             
             # Generar par de claves Kyber
             logger.info("Generando par de claves Kyber...")

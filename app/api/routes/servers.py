@@ -359,3 +359,48 @@ async def get_servers():
     except Exception as e:
         logger.error(f"Error retrieving servers: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.get("/vpn-health", response_model=Dict[str, Any])
+@azure_vm_safe_endpoint
+async def get_vpn_server_health():
+    """
+    Check if the VPN server is running and can accept connections.
+    
+    Returns:
+        Status information about the VPN server
+    """
+    try:
+        # Check if server is defined and running
+        server_running = hasattr(vpn_server, 'running') and vpn_server.running
+        server_port = getattr(vpn_server, 'port', settings.VPN_PORT)
+        
+        # Check if the VPN server is actually listening on its port
+        socket_test = False
+        try:
+            # Try to establish a quick connection to verify server is listening
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1.0)  # Short timeout
+            s.connect(('127.0.0.1', server_port))
+            s.close()
+            socket_test = True
+        except Exception as socket_err:
+            logger.warning(f"VPN server port {server_port} is not accepting connections: {str(socket_err)}")
+        
+        return {
+            "vpn_server_instance": bool(vpn_server),
+            "instance_type": str(type(vpn_server)),
+            "server_running": server_running,
+            "port_listening": socket_test,
+            "configured_port": server_port,
+            "client_count": len(vpn_server.clients) if hasattr(vpn_server, 'clients') else 0,
+            "tun_interface_active": hasattr(vpn_server, 'tun') and vpn_server.tun is not None,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error checking VPN server health: {str(e)}", exc_info=True)
+        return {
+            "vpn_server_instance": False,
+            "error": str(e),
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }

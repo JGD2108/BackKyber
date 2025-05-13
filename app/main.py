@@ -272,23 +272,35 @@ async def startup_event():
     import asyncio
     asyncio.create_task(keep_alive())
 
-    # Start the VPN Server
+    # Start the VPN Server with enhanced logging
     logger.info("Attempting to start Kyber VPN server...")
     try:
-        # Basic check: Start server if not in a known cloud simulation environment
-        # More sophisticated checks (admin rights, TUN capability) are in VPNServer.start()
+        # Check if we're in cloud environment
         is_cloud_env = bool(os.environ.get("RENDER") or
                            os.environ.get("VERCEL") or
                            os.environ.get("HEROKU_APP_ID"))
 
         if not is_cloud_env:
-            # The VPNServer.start() method is long-running (contains serve_forever)
-            # so it needs to be run as a background task.
-            asyncio.create_task(global_vpn_server.start())
+            # Log server attributes before starting
+            logger.info(f"VPN server object type: {type(global_vpn_server)}")
+            logger.info(f"VPN server port: {global_vpn_server.port}")
+            logger.info(f"VPN server subnet: {global_vpn_server.subnet}")
+            
+            # The VPNServer.start() method is long-running
+            vpn_task = asyncio.create_task(global_vpn_server.start())
+            
+            # Add a callback to handle task exceptions
+            def handle_vpn_task_exception(task):
+                try:
+                    # This will re-raise any exception that occurred
+                    task.result()
+                except Exception as e:
+                    logger.error(f"VPN server task failed with: {str(e)}", exc_info=True)
+            
+            vpn_task.add_done_callback(handle_vpn_task_exception)
             logger.info("Kyber VPN server startup task created.")
         else:
             logger.warning("Kyber VPN server not started: Cloud environment detected (simulation mode).")
-            
     except AttributeError as e:
         logger.error(f"Failed to start VPN server: Method not found on vpn_server instance. Details: {e}", exc_info=True)
     except Exception as e:
