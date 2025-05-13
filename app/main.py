@@ -6,7 +6,7 @@ para la gestión de la VPN educativa resistente a ataques cuánticos.
 """
 import logging
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware  # Descomentado para habilitar CORS
 
 from app.core.config import settings
 # Importar todos los routers
@@ -32,17 +32,11 @@ app = FastAPI(
 # Configurar CORS para permitir solicitudes desde el frontend
 app.add_middleware(
     CORSMiddleware,
-    # Permitir cualquier origen en desarrollo
-    allow_origins=["*"] if settings.DEBUG else [
-        "http://localhost:3000", 
-        "https://frontkyber.vercel.app",
-        "https://backkyber.onrender.com", 
-        "http://20.83.144.149:8000"
-        
-    ],
-    allow_credentials=False,  # Cambiar a False cuando allow_origins=["*"]
-    allow_methods=["*"],
+    allow_origins=["https://frontkyber.vercel.app", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "X-Requested-With", "Authorization"]
 )
 
 # Registrar rutas
@@ -61,14 +55,16 @@ async def root():
         "version": "0.1.0"
     }
 
+# Modify your health check endpoint
+
 @app.get("/api/health")
 async def health_check():
-    """Endpoint mejorado para verificación de salud compatible con Azure."""
+    """Endpoint for health verification with CORS headers."""
     import platform
     import psutil
     import datetime
     
-    return {
+    response = {
         "status": "ok",
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "version": "0.1.0",
@@ -79,6 +75,8 @@ async def health_check():
             "memory_percent": psutil.virtual_memory().percent
         }
     }
+    
+    return response
 
 @app.get("/api/status")
 async def global_status():

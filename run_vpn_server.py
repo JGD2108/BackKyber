@@ -10,6 +10,30 @@ import sys
 import platform
 import subprocess
 import argparse
+import urllib.request
+import json
+import logging
+
+# Setup logging - Azure best practice for diagnostics
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='/var/log/kyber-vpn.log',
+    filemode='a'
+)
+logger = logging.getLogger('kyber_vpn')
+
+def is_azure_vm():
+    """Detecta si estamos ejecutando en Azure VM."""
+    try:
+        req = urllib.request.Request(
+            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+            headers={"Metadata": "true"}
+        )
+        response = urllib.request.urlopen(req, timeout=2)
+        return response.getcode() == 200
+    except Exception:
+        return False
 
 def check_requirements():
     """Verifica si se cumplen los requisitos para ejecutar la VPN real."""
@@ -70,13 +94,55 @@ def check_requirements():
             print(f"Error al verificar adaptadores de red: {str(e)}")
             return False
     
-    # Verificar que no estamos en un entorno cloud restrictivo
-    if any(env in os.environ for env in ["RENDER", "VERCEL", "HEROKU_APP_ID"]):
+    # Verificar que no estamos en un entorno cloud restrictivo (excepto Azure)
+    is_azure = is_azure_vm()
+    if any(env in os.environ for env in ["RENDER", "VERCEL", "HEROKU_APP_ID"]) and not is_azure:
         print("Detectado entorno cloud que no permite crear interfaces TUN/TAP")
         print("Ejecuta este script en un servidor dedicado, VPS o máquina local")
         return False
     
+    if is_azure:
+        print("Detectado entorno Azure VM - compatible con VPN")
+        if not configure_azure_environment():
+            print("Error al configurar entorno Azure")
+            return False
+    
     return True
+
+def configure_azure_environment():
+    """Configure Azure VM environment for optimal VPN performance."""
+    if not is_azure_vm():
+        return True
+        
+    logger.info("Configuring Azure environment for VPN...")
+    os_name = platform.system().lower()
+    
+    try:
+        # 1. Enable IP forwarding for VPN traffic
+        if os_name == "linux":
+            subprocess.run(["sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
+            
+            # Make IP forwarding persistent
+            subprocess.run(["sudo", "sh", "-c", "echo net.ipv4.ip_forward=1 > /etc/sysctl.d/99-vpn-forward.conf"], check=True)
+            subprocess.run(["sudo", "sysctl", "-p", "/etc/sysctl.d/99-vpn-forward.conf"], check=True)
+            
+            # 2. Configure iptables for NAT (required for VPN)
+            subprocess.run([
+                "sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", 
+                "-s", "10.8.0.0/24", "-o", "eth0", "-j", "MASQUERADE"
+            ], check=True)
+            
+            # Make iptables rules persistent
+            try:
+                subprocess.run(["sudo", "apt-get", "install", "-y", "iptables-persistent"], check=True)
+                subprocess.run(["sudo", "netfilter-persistent", "save"], check=True)
+            except Exception as e:
+                logger.warning(f"Could not persist iptables rules: {e}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to configure Azure environment: {e}")
+        return False
 
 def run_vpn_server(port=1194, subnet="10.8.0.0/24", debug=False):
     """Ejecuta el servidor VPN real."""
@@ -120,6 +186,7 @@ if __name__ == "__main__":
     
     if check_requirements():
         print("Requisitos verificados correctamente")
+        configure_azure_environment()
         run_vpn_server(port=args.port, subnet=args.subnet, debug=args.debug)
     else:
         sys.exit(1)
