@@ -35,10 +35,12 @@ app.add_middleware(
     allow_origins=[
         "https://frontkyber.vercel.app", 
         "http://localhost:3000",
-        "https://20.83.144.149",         # Azure VM HTTPS
-        "http://20.83.144.149",          # Azure VM HTTP 
-        "https://20.83.144.149:8000",    # Direct HTTPS with port
-        "http://20.83.144.149:8000",     # Direct HTTP with port
+        "https://20.83.144.149",
+        "http://20.83.144.149",
+        "https://20.83.144.149:8000",
+        "http://20.83.144.149:8000",
+        "https://20.83.144.149:8080",  # Add this line
+        "http://20.83.144.149:8080",   # Add this line
         "*"                              # Allow all origins for testing (remove in production)
     ],
     allow_credentials=True,

@@ -26,6 +26,8 @@ async def connect_to_vpn(request: ConnectionRequest):
     # Buscar información del servidor
     from app.core.config import settings
     
+    print(f"Backend: Received connect request for serverId: {request.serverId}") # Temporary debug log
+    
     server = None
     for s in settings.VPN_SERVERS:
         if s["id"] == request.serverId:
