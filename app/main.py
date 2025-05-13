@@ -36,7 +36,7 @@ import os
 
 # Define allowed origins with proper Azure naming conventions
 allowed_origins = [
-    "https://frontkyber.vercel.app", 
+    "https://frontkyber.vercel.app",
     "http://localhost:3000",
     "https://20.83.144.149" # Include the Azure VM itself
 ]
@@ -61,13 +61,24 @@ if os.environ.get("ENVIRONMENT", "development").lower() != "production":
 async def options_middleware(request, call_next):
     if request.method == "OPTIONS":
         # Return a response for OPTIONS preflight request
-        headers = {
-            "Access-Control-Allow-Origin": "*" if "*" in allowed_origins else request.headers.get("Origin", ""),
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin",
-            "Access-Control-Max-Age": "86400",
-        }
-        return Response(status_code=204, headers=headers)
+        origin = request.headers.get("Origin", "")
+        response_origin = ""
+        if "*" in allowed_origins:
+            response_origin = "*"
+        elif origin in allowed_origins:
+            response_origin = origin
+
+        if response_origin: # Only set headers if origin is allowed
+            headers = {
+                "Access-Control-Allow-Origin": response_origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin, x-request-id", # Added x-request-id
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "86400",
+            }
+            return Response(status_code=204, headers=headers)
+        else: # Origin not allowed
+            return Response(status_code=400, content="CORS origin not allowed")
     return await call_next(request)
 
 # Configure the standard CORS middleware
@@ -76,8 +87,8 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin"],
-    expose_headers=["Content-Type", "X-Requested-With", "Authorization"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "x-request-id"], # Added x-request-id
+    expose_headers=["Content-Type", "X-Requested-With", "Authorization", "x-request-id"], # Added x-request-id
     max_age=86400  # Cache preflight requests for 24 hours (Azure recommended)
 )
 
