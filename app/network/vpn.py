@@ -23,9 +23,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Puerto para el servidor VPN
-VPN_PORT = 1194
+# VPN_PORT = 1194 # Consider using settings.VPN_PORT directly
 
-class VPNClient:
+class VPNClient: # This is the server's representation of a connected client
     """Representación de un cliente conectado al servidor VPN."""
     
     def __init__(self, client_id: str, vpn_ip: str, writer: asyncio.StreamWriter, 
@@ -39,7 +39,7 @@ class VPNClient:
         self.bytes_received = 0
         self.connected_since = time.time()
 
-class VPNServer:
+class VPNServer: # This is your main, real VPN server implementation
     """
     Servidor VPN real con soporte para criptografía post-cuántica.
     
@@ -49,7 +49,7 @@ class VPNServer:
     """
     
     def __init__(self, subnet: str = "10.8.0.0/24", 
-                 port: int = VPN_PORT):
+                 port: int = settings.VPN_PORT): # Use settings.VPN_PORT as default
         """
         Inicializa el servidor VPN.
         
@@ -58,7 +58,7 @@ class VPNServer:
             port: Puerto para escuchar conexiones
         """
         self.subnet = subnet
-        self.port = port
+        self.port = port # Ensure this uses the passed port
         self.tun = None
         self.server = None
         self.running = False
@@ -411,55 +411,27 @@ class VPNServer:
         data = await reader.readexactly(size)
         return data
 
-# Crear instancia global
-vpn_server = VPNServer(subnet=settings.VPN_SUBNET, port=VPN_PORT)
+# Crear instancia global del servidor VPN real
+# This should be the primary instantiation of the global vpn_server.
+# Ensure settings are loaded before this file is imported if settings.VPN_SUBNET or settings.VPN_PORT are used here.
+# It's generally safer to initialize with defaults and let settings override if needed,
+# or ensure settings is fully initialized. The current VPNServer __init__ uses settings.KYBER_PARAMETER.
+vpn_server = VPNServer(subnet=settings.VPN_SUBNET, port=settings.VPN_PORT)
+logger.info(f"Global VPNServer instance created of type: {type(vpn_server)}, configured for port: {settings.VPN_PORT}")
 
-# Add this defensive initialization
-
-class VpnServer:
-    def __init__(self):
-        self.clients = {}
-        self.available_ips = ["10.8.0." + str(i) for i in range(2, 255)]
-        self.uptime = 0
-        # Add more robust initialization for Azure environment
-
-# If the global vpn_server instance is causing issues, ensure it's created properly
-try:
-    vpn_server = VpnServer()
-except Exception as e:
-    import logging
-    logger = logging.getLogger("kyber-vpn")
-    logger.error(f"Failed to initialize VPN server: {str(e)}", exc_info=True)
-    vpn_server = VpnServer()  # Fallback to empty server
-
-# Azure VM optimized VPN server defensive initialization
-try:
-    # Check if the global instance is properly initialized
-    if not hasattr(vpn_server, 'clients') or vpn_server.clients is None:
-        # Reset the VPN server instance with basic functionality
-        class AzureSafeVPNServer:
-            """Minimal VPN server implementation for Azure VM environment"""
-            def __init__(self):
-                self.clients = {}
-                self.available_ips = ["10.8.0." + str(i) for i in range(2, 255)]
-                self.uptime = 0
-                self.running = False
-                
-            async def start(self):
-                """Start VPN server safely"""
-                logger.info("Starting VPN server in Azure VM environment")
-                self.running = True
-                return True
-                
-            async def stop(self):
-                """Stop VPN server safely"""
-                logger.info("Stopping VPN server in Azure VM environment")
-                self.running = False
-                return True
-                
-        vpn_server = AzureSafeVPNServer()
-        logger.info("VPN Server initialized with Azure-compatible implementation")
-except Exception as e:
-    import logging
-    logger = logging.getLogger("kyber-vpn")
-    logger.error(f"Failed to initialize VPN server in Azure VM: {str(e)}", exc_info=True)
+# Remove or comment out the following sections that redefine vpn_server with stubs:
+#
+# # Add this defensive initialization
+# class VpnServer:
+#     def __init__(self):
+# ... (and the try-except block that uses this VpnServer stub) ...
+#
+# # Azure VM optimized VPN server defensive initialization
+# try:
+#     if not hasattr(vpn_server, 'clients') or vpn_server.clients is None:
+#         class AzureSafeVPNServer:
+# ... (and the try-except block that uses this AzureSafeVPNServer stub) ...
+#
+# If Azure-specific or fallback behavior is needed, it should be integrated into
+# the main VPNServer class or handled by instantiating the correct type from the start,
+# not by overwriting the global instance with stubs.

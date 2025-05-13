@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import traceback
 import json
+import asyncio  # Ensure asyncio is imported
 
 from app.core.config import settings
 # Import all routers
@@ -19,6 +20,7 @@ from app.api.routes.servers import router as servers_router
 from app.api.routes.connection import router as connection_router
 from app.api.routes.education import router as education_router
 from app.api.routes.chat import router as chat_router  # New import
+from app.network.vpn import vpn_server as global_vpn_server  # Import the server instance
 
 # Configurar logging
 logging.basicConfig(
@@ -218,9 +220,9 @@ async def global_status():
 
 @app.on_event("startup")
 async def startup_event():
-    """Iniciar proceso en segundo plano para mantener la instancia activa."""
+    """Iniciar proceso en segundo plano para mantener la instancia activa y iniciar VPN server."""
+    # Existing anti-sleep task
     logger.info("Iniciando servicio anti-sleep.")
-    
     async def keep_alive():
         """Tarea en segundo plano para realizar un self-ping periódico."""
         import asyncio
@@ -269,6 +271,40 @@ async def startup_event():
     # Iniciar tarea en segundo plano
     import asyncio
     asyncio.create_task(keep_alive())
+
+    # Start the VPN Server
+    logger.info("Attempting to start Kyber VPN server...")
+    try:
+        # Basic check: Start server if not in a known cloud simulation environment
+        # More sophisticated checks (admin rights, TUN capability) are in VPNServer.start()
+        is_cloud_env = bool(os.environ.get("RENDER") or
+                           os.environ.get("VERCEL") or
+                           os.environ.get("HEROKU_APP_ID"))
+
+        if not is_cloud_env:
+            # The VPNServer.start() method is long-running (contains serve_forever)
+            # so it needs to be run as a background task.
+            asyncio.create_task(global_vpn_server.start())
+            logger.info("Kyber VPN server startup task created.")
+        else:
+            logger.warning("Kyber VPN server not started: Cloud environment detected (simulation mode).")
+            
+    except AttributeError as e:
+        logger.error(f"Failed to start VPN server: Method not found on vpn_server instance. Details: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error during Kyber VPN server startup: {e}", exc_info=True)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Detener el servidor VPN al cerrar la aplicación."""
+    logger.info("Attempting to stop Kyber VPN server...")
+    try:
+        await global_vpn_server.stop()
+        logger.info("Kyber VPN server stopped.")
+    except AttributeError as e:
+        logger.error(f"Failed to stop VPN server: Method not found on vpn_server instance. Details: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"Error during Kyber VPN server shutdown: {e}", exc_info=True)
 
 # Add these exception handlers before your app routes
 @app.exception_handler(StarletteHTTPException)
