@@ -30,66 +30,38 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Replace your current CORS configuration with this Azure-optimized version:
+# Replace your current CORS configuration with this simplified version
 
 # Azure Best Practice: Enhanced CORS Configuration for Azure VM
 import os
 
-# Define allowed origins with proper Azure naming conventions
-allowed_origins = [
-    "https://frontkyber.vercel.app",
-    "http://localhost:3000",
-    "https://20.83.144.149" # Include the Azure VM itself
-]
+# For wildcard CORS (allows requests from anywhere)
+# WARNING: Only use this for development/testing, not in production!
+allowed_origins = ["*"]  # Allow any origin
 
-# In non-production environments, add development origins
-if os.environ.get("ENVIRONMENT", "development").lower() != "production":
-    logger.warning("Using development CORS settings - not recommended for production")
-    allowed_origins.extend([
-        "http://20.83.144.149",
-        "https://20.83.144.149:8000",
-        "http://20.83.144.149:8000",
-        "https://20.83.144.149:8080",
-        "http://20.83.144.149:8080"
-    ])
-    # Only add wildcard in development
-    if os.environ.get("ENVIRONMENT") == "development":
-        allowed_origins.append("*")
-
-# Azure best practice: Add a middleware to handle preflight OPTIONS requests explicitly
-# This ensures OPTIONS requests are properly handled even without reaching your route handlers
+# Azure best practice: Add a middleware to handle preflight OPTIONS requests
 @app.middleware("http")
 async def options_middleware(request, call_next):
     if request.method == "OPTIONS":
-        # Return a response for OPTIONS preflight request
-        origin = request.headers.get("Origin", "")
-        response_origin = ""
-        if "*" in allowed_origins:
-            response_origin = "*"
-        elif origin in allowed_origins:
-            response_origin = origin
-
-        if response_origin: # Only set headers if origin is allowed
-            headers = {
-                "Access-Control-Allow-Origin": response_origin,
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin, x-request-id", # Added x-request-id
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "86400",
-            }
-            return Response(status_code=204, headers=headers)
-        else: # Origin not allowed
-            return Response(status_code=400, content="CORS origin not allowed")
+        # For wildcard CORS
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin, x-request-id",
+            # Note: When using wildcard (*) for origin, credentials cannot be true
+            "Access-Control-Max-Age": "86400",
+        }
+        return Response(status_code=204, headers=headers)
     return await call_next(request)
 
 # Configure the standard CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=False,  # Must be False when using wildcard "*" for origins
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "x-request-id"], # Added x-request-id
-    expose_headers=["Content-Type", "X-Requested-With", "Authorization", "x-request-id"], # Added x-request-id
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "x-request-id"],
+    expose_headers=["Content-Type", "X-Requested-With", "Authorization", "x-request-id"],
     max_age=86400  # Cache preflight requests for 24 hours (Azure recommended)
 )
 
