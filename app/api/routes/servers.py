@@ -21,18 +21,30 @@ async def get_server_info():
     Returns:
         Información detallada del servidor
     """
-    # Configuración del servidor único
-    server_info = {
-        "id": "kyber-vpn-main",
-        "name": "Servidor Kyber VPN Principal",
-        "location": "Servidor Local",
-        "ip": settings.SERVER_HOST,
-        "port": settings.VPN_PORT,
-        "status": ServerStatus.ONLINE,
-        "latency": 0
-    }
-    
-    return server_info
+    try:
+        # Configuración del servidor único
+        server_info = {
+            "id": "kyber-vpn-main",
+            "name": "Servidor Kyber VPN Principal",
+            "location": "Servidor Local",
+            "ip": settings.SERVER_HOST,
+            "port": settings.VPN_PORT,
+            "status": ServerStatus.ONLINE,
+            "latency": 0
+        }
+        
+        return server_info
+    except Exception as e:
+        # Log error to Azure Application Insights if configured
+        import logging
+        logger = logging.getLogger("kyber-vpn")
+        logger.error(f"Error in get_server_info: {str(e)}", exc_info=True)
+        
+        # Return a more specific error for better troubleshooting
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving server information: {str(e)}"
+        )
 
 @router.get("/status", response_model=Dict[str, Any])
 async def get_server_status():

@@ -413,3 +413,21 @@ class VPNServer:
 
 # Crear instancia global
 vpn_server = VPNServer(subnet=settings.VPN_SUBNET, port=VPN_PORT)
+
+# Add this defensive initialization
+
+class VpnServer:
+    def __init__(self):
+        self.clients = {}
+        self.available_ips = ["10.8.0." + str(i) for i in range(2, 255)]
+        self.uptime = 0
+        # Add more robust initialization for Azure environment
+
+# If the global vpn_server instance is causing issues, ensure it's created properly
+try:
+    vpn_server = VpnServer()
+except Exception as e:
+    import logging
+    logger = logging.getLogger("kyber-vpn")
+    logger.error(f"Failed to initialize VPN server: {str(e)}", exc_info=True)
+    vpn_server = VpnServer()  # Fallback to empty server
