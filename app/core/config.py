@@ -56,15 +56,16 @@ class Settings(BaseSettings):
         if not self.VPN_SERVERS: # Populate only if not already set (e.g., by environment)
             self.VPN_SERVERS = [
                 {
-                    "id": "kyber-vpn-main",
+                    "id": "kyber-vpn-main",  # MUST match what the frontend is sending
                     "name": "Servidor Kyber VPN Principal",
-                    "location": "Servidor Azure",
-                    "ip": self.SERVER_HOST, # Use self.SERVER_HOST
-                    "port": self.VPN_PORT,    # Use self.VPN_PORT
-                    "status": ServerStatus.ONLINE.value if isinstance(ServerStatus.ONLINE, Enum) else ServerStatus.ONLINE, # Use .value if it's an Enum
+                    "location": "Azure VM",
+                    "ip": self.SERVER_HOST,  # Use self.SERVER_HOST
+                    "port": self.VPN_PORT,   # Use self.VPN_PORT
+                    "status": "online",      # Simple string value instead of enum to avoid issues
                     "latency": 0,
                 }
             ]
+            print(f"Populated VPN_SERVERS with: {self.VPN_SERVERS}")
 
     @validator("CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
