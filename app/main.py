@@ -29,25 +29,24 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Improved CORS configuration for Azure
-allowed_origins = [
-    "https://frontkyber.vercel.app", 
-    "http://localhost:3000",
-    # Add the Azure VM address
-    "https://20.83.144.149"
-]
-
-# Only add wildcard in development mode
-if app.debug:
-    logger.warning("Running in debug mode with permissive CORS policy!")
-    allowed_origins.append("*")
-
+# Configurar CORS para permitir solicitudes desde el frontend y Azure VM
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "https://frontkyber.vercel.app", 
+        "http://localhost:3000",
+        "https://20.83.144.149",
+        "http://20.83.144.149",
+        "https://20.83.144.149:8000",
+        "http://20.83.144.149:8000",
+        "https://20.83.144.149:8080",  # Add this line
+        "http://20.83.144.149:8080",   # Add this line
+        "*"                              # Allow all origins for testing (remove in production)
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin"]
+    allow_headers=["*"],
+    expose_headers=["Content-Type", "X-Requested-With", "Authorization"]
 )
 
 # Registrar rutas
@@ -250,22 +249,3 @@ async def startup_event():
     # Iniciar tarea en segundo plano
     import asyncio
     asyncio.create_task(keep_alive())
-
-# Add Azure specific startup event
-@app.on_event("startup")
-async def azure_startup_checks():
-    """Perform Azure-specific startup checks and logging"""
-    import platform
-    import socket
-    
-    logger.info(f"Starting Kyber VPN API on {platform.platform()}")
-    
-    # Log configuration for debugging
-    logger.info(f"VPN_SERVERS configuration: {settings.VPN_SERVERS}")
-    
-    try:
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-        logger.info(f"Server hostname: {hostname}, IP: {local_ip}")
-    except Exception as e:
-        logger.error(f"Error getting network info: {str(e)}")
