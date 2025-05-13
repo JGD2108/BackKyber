@@ -29,10 +29,18 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Configurar CORS para permitir solicitudes desde el frontend
+# Configurar CORS para permitir solicitudes desde el frontend y Azure VM
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://frontkyber.vercel.app", "http://localhost:3000"],
+    allow_origins=[
+        "https://frontkyber.vercel.app", 
+        "http://localhost:3000",
+        "https://20.83.144.149",         # Azure VM HTTPS
+        "http://20.83.144.149",          # Azure VM HTTP 
+        "https://20.83.144.149:8000",    # Direct HTTPS with port
+        "http://20.83.144.149:8000",     # Direct HTTP with port
+        "*"                              # Allow all origins for testing (remove in production)
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],

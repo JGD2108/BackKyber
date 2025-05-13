@@ -24,9 +24,7 @@ class Settings(BaseSettings):
     
     # Configuración CORS
     CORS_ORIGINS: List[Union[str, AnyHttpUrl]] = [
-        "http://localhost:3000",  # Frontend React en desarrollo
-        "http://localhost:8080",
-        "https://c365-186-170-119-130.ngrok-free.app"  # Añade tu URL de Ngrok (sin /api)
+        "https://20.83.144.149"  # Añade tu URL de Ngrok (sin /api)
     ]
     
     # Configuración de red para VPN
@@ -68,6 +66,9 @@ class Settings(BaseSettings):
             "latency": 50
         }
     ]
+    
+    # Azure-specific settings with default fallback
+    BASE_URL: str ="https://20.83.144.149"
     
     class Config:
         env_file = ".env"
