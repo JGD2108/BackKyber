@@ -30,19 +30,22 @@ app = FastAPI(
 )
 
 # Configurar CORS para permitir solicitudes desde el frontend y Azure VM
-# Azure Best Practice: Secure CORS Configuration
+# Azure Best Practice: Secure CORS Configuration para Azure VM
 import os
 
-# Define allowed origins based on environment
+# Definir orígenes permitidos con las convenciones de nomenclatura adecuadas de Azure
 allowed_origins = [
     "https://frontkyber.vercel.app", 
     "http://localhost:3000",
-    "https://20.83.144.149"
 ]
 
-# Add additional origins only in non-production environments
+# Agregar URLs de Azure VM a los orígenes permitidos
+azure_vm_url = "https://20.83.144.149"
+allowed_origins.append(azure_vm_url)
+
+# Solo agregar orígenes de desarrollo en entornos no productivos
 if os.environ.get("ENVIRONMENT", "development").lower() != "production":
-    logger.warning("Using development CORS settings - not recommended for production")
+    logger.warning("Usando configuraciones de CORS de desarrollo - no recomendado para producción")
     allowed_origins.extend([
         "http://20.83.144.149",
         "https://20.83.144.149:8000",
@@ -50,16 +53,19 @@ if os.environ.get("ENVIRONMENT", "development").lower() != "production":
         "https://20.83.144.149:8080",
         "http://20.83.144.149:8080"
     ])
-    # Only add wildcard in development
-    allowed_origins.append("*")
+    # En desarrollo, agregar comodín para pruebas - ELIMINAR EN PRODUCCIÓN
+    if os.environ.get("ENVIRONMENT") == "development":
+        allowed_origins.append("*")
 
+# Configurar middleware de CORS con manejo explícito para OPTIONS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
-    expose_headers=["Content-Type", "X-Requested-With", "Authorization"]
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin"],
+    expose_headers=["Content-Type", "X-Requested-With", "Authorization"],
+    max_age=86400  # Cache de solicitudes preflight por 24 horas (recomendado por Azure)
 )
 
 # Registrar rutas
