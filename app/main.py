@@ -6,14 +6,15 @@ para la gestión de la VPN educativa resistente a ataques cuánticos.
 """
 import logging
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware, Response  # Descomentado para habilitar CORS
+from fastapi.middleware.cors import CORSMiddleware  # Corrected - no Response here
+from starlette.responses import Response  # Add this line to import Response from the correct module
 
 from app.core.config import settings
-# Importar todos los routers
+# Import all routers
 from app.api.routes.servers import router as servers_router
 from app.api.routes.connection import router as connection_router
 from app.api.routes.education import router as education_router
-from app.api.routes.chat import router as chat_router  # Nueva importación
+from app.api.routes.chat import router as chat_router  # New import
 
 # Configurar logging
 logging.basicConfig(
