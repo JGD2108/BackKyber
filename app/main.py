@@ -51,7 +51,7 @@ app.add_middleware(
 
 # Registrar rutas
 app.include_router(servers_router, prefix="/api/servers", tags=["servers"])
-app.include_router(connection_router, prefix="/api", tags=["connection"])
+app.include_router(connection_router, prefix="", tags=["connection"])
 app.include_router(education_router, prefix="/api/education", tags=["education"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])  # Nueva ruta
 
@@ -199,32 +199,51 @@ async def global_status():
 @app.on_event("startup")
 async def startup_event():
     """Iniciar proceso en segundo plano para mantener la instancia activa."""
-    logger.info("Iniciando servicio anti-sleep para prevenir hibernación en Render.com")
+    logger.info("Iniciando servicio anti-sleep.")
     
     async def keep_alive():
-        """Tarea en segundo plano para evitar que Render.com hiberne la instancia."""
+        """Tarea en segundo plano para realizar un self-ping periódico."""
         import asyncio
         import random
         import aiohttp
+        import ssl # Import ssl module
         
         # URL del servicio (a sí mismo)
-        base_url = settings.BASE_URL or "https://backkyber.onrender.com"
+        # Ensure settings.BASE_URL is correctly set to your Azure VM's HTTPS URL
+        base_url = settings.BASE_URL # Example: "https://20.83.144.149"
+        if not base_url:
+            logger.warning("settings.BASE_URL is not set for anti-sleep task. Skipping self-ping.")
+            return
+
         service_url = f"{base_url}/api/health"
         
+        # Create an SSL context that does not verify certificates
+        # WARNING: This disables SSL certificate verification for this specific request.
+        # This is generally acceptable for a self-ping to a service you control
+        # if you are using a self-signed certificate.
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        logger.info(f"Anti-sleep task will ping: {service_url}")
+
         while True:
             try:
-                # Esperar entre 10-14 minutos (menos que el tiempo de hibernación de 15 min)
+                # Esperar entre 10-14 minutos
                 await asyncio.sleep(600 + random.randint(0, 240))
                 
                 async with aiohttp.ClientSession() as session:
-                    # Hacer ping al servicio
-                    async with session.get(service_url) as response:
+                    # Hacer ping al servicio, using the custom ssl_context
+                    async with session.get(service_url, ssl=ssl_context) as response:
                         if response.status == 200:
-                            logger.debug("Anti-sleep ping exitoso")
+                            logger.debug(f"Anti-sleep ping to {service_url} successful: {response.status}")
                         else:
-                            logger.warning(f"Anti-sleep ping fallido: {response.status}")
+                            logger.warning(f"Anti-sleep ping to {service_url} fallido: {response.status}")
+            except aiohttp.ClientConnectorError as e:
+                logger.error(f"Error de conexión en anti-sleep a {service_url}: {str(e)}")
+                await asyncio.sleep(300) # Esperar 5 minutos en caso de error de conexión
             except Exception as e:
-                logger.error(f"Error en anti-sleep: {str(e)}")
+                logger.error(f"Error general en anti-sleep ({service_url}): {str(e)}", exc_info=True)
                 await asyncio.sleep(300)  # Esperar 5 minutos en caso de error
     
     # Iniciar tarea en segundo plano
