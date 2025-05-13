@@ -6,7 +6,7 @@ para la gestión de la VPN educativa resistente a ataques cuánticos.
 """
 import logging
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # Descomentado para habilitar CORS
+from fastapi.middleware.cors import CORSMiddleware, Response  # Descomentado para habilitar CORS
 
 from app.core.config import settings
 # Importar todos los routers
@@ -29,23 +29,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Configurar CORS para permitir solicitudes desde el frontend y Azure VM
-# Azure Best Practice: Secure CORS Configuration para Azure VM
+# Replace your current CORS configuration with this Azure-optimized version:
+
+# Azure Best Practice: Enhanced CORS Configuration for Azure VM
 import os
 
-# Definir orígenes permitidos con las convenciones de nomenclatura adecuadas de Azure
+# Define allowed origins with proper Azure naming conventions
 allowed_origins = [
     "https://frontkyber.vercel.app", 
     "http://localhost:3000",
+    "https://20.83.144.149" # Include the Azure VM itself
 ]
 
-# Agregar URLs de Azure VM a los orígenes permitidos
-azure_vm_url = "https://20.83.144.149"
-allowed_origins.append(azure_vm_url)
-
-# Solo agregar orígenes de desarrollo en entornos no productivos
+# In non-production environments, add development origins
 if os.environ.get("ENVIRONMENT", "development").lower() != "production":
-    logger.warning("Usando configuraciones de CORS de desarrollo - no recomendado para producción")
+    logger.warning("Using development CORS settings - not recommended for production")
     allowed_origins.extend([
         "http://20.83.144.149",
         "https://20.83.144.149:8000",
@@ -53,11 +51,26 @@ if os.environ.get("ENVIRONMENT", "development").lower() != "production":
         "https://20.83.144.149:8080",
         "http://20.83.144.149:8080"
     ])
-    # En desarrollo, agregar comodín para pruebas - ELIMINAR EN PRODUCCIÓN
+    # Only add wildcard in development
     if os.environ.get("ENVIRONMENT") == "development":
         allowed_origins.append("*")
 
-# Configurar middleware de CORS con manejo explícito para OPTIONS
+# Azure best practice: Add a middleware to handle preflight OPTIONS requests explicitly
+# This ensures OPTIONS requests are properly handled even without reaching your route handlers
+@app.middleware("http")
+async def options_middleware(request, call_next):
+    if request.method == "OPTIONS":
+        # Return a response for OPTIONS preflight request
+        headers = {
+            "Access-Control-Allow-Origin": "*" if "*" in allowed_origins else request.headers.get("Origin", ""),
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin",
+            "Access-Control-Max-Age": "86400",
+        }
+        return Response(status_code=204, headers=headers)
+    return await call_next(request)
+
+# Configure the standard CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -65,7 +78,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin"],
     expose_headers=["Content-Type", "X-Requested-With", "Authorization"],
-    max_age=86400  # Cache de solicitudes preflight por 24 horas (recomendado por Azure)
+    max_age=86400  # Cache preflight requests for 24 hours (Azure recommended)
 )
 
 # Registrar rutas
