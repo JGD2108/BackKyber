@@ -1,71 +1,50 @@
 """
-Configuración de la aplicación Kyber VPN.
-
-Este módulo define la configuración global utilizada en toda la aplicación,
-incluyendo parámetros para la VPN, seguridad y red.
+Configuración de la aplicación Kyber VPN con integración para Azure.
 """
-import os
 from typing import List, Union, Optional, Dict, Any
 from pydantic import BaseSettings, AnyHttpUrl, validator
+import os
+import logging
 
-# Assuming ServerStatus is an Enum, you need to define or import it.
-# For example, if it's in your models:
-from app.models.schemas import ServerStatus # Or wherever ServerStatus is defined
+logger = logging.getLogger("kyber-vpn")
 
 class Settings(BaseSettings):
-    """Configuración global de la aplicación."""
-    
-    # Configuración general
+    # API Configuration
+    API_V1_STR: str = "/api"
     PROJECT_NAME: str = "Kyber VPN"
-    API_PREFIX: str = "/api"
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
-    # Configuración de seguridad
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "insecure_default_key_please_change_in_production")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
-    ALGORITHM: str = "HS256"
+    # Server Configuration
+    SERVER_HOST: str = os.environ.get("SERVER_HOST", "127.0.0.1")
+    SERVER_PORT: int = int(os.environ.get("SERVER_PORT", "8000"))
+    VPN_PORT: int = int(os.environ.get("VPN_PORT", "5000"))
+    BASE_URL: str = os.environ.get("BASE_URL", "https://20.83.144.149")
     
-    # Configuración CORS
-    CORS_ORIGINS: List[Union[str, AnyHttpUrl]] = [
-        "https://20.83.144.149",
-        "https://frontkyber.vercel.app" # Added your frontend URL
-    ]
+    # CORS Configuration
+    CORS_ORIGINS: List[str] = []
     
-    # Configuración de red para VPN
-    VPN_SUBNET: str = os.getenv("VPN_SUBNET", "10.8.0.0/24")
-    VPN_SERVER_IP: str = os.getenv("VPN_SERVER_IP", "10.8.0.1") # This is likely the VPN's internal IP
-    TUN_NAME: str = os.getenv("TUN_NAME", "tun0")
-    
-    # Configuración de criptografía
-    KYBER_PARAMETER: str = os.getenv("KYBER_PARAMETER", "kyber768")
-    
-    # These should be actual values or fetched from env
-    SERVER_HOST: str = os.getenv("SERVER_HOST", "20.83.144.149") # Public IP of your server
-    VPN_PORT: int = int(os.getenv("VPN_PORT", "1194")) # Actual VPN listening port
-
-    # Servidores VPN predefinidos
-    # Option 1: Define directly if values are static or from env at load time
-    VPN_SERVERS: List[Dict[str, Any]] = [] # Initialize and populate later if dependent on instance
-
-    # Azure-specific settings
-    BASE_URL: str = "https://20.83.144.149"
+    # VPN Server List
+    VPN_SERVERS: List[Dict[str, Any]] = []
 
     def __init__(self, **values: Any):
         super().__init__(**values)
-        # Option 2: Populate VPN_SERVERS here if they depend on other instance attributes
-        if not self.VPN_SERVERS: # Populate only if not already set (e.g., by environment)
+        # Populate VPN_SERVERS if not already set
+        if not self.VPN_SERVERS:
+            # Log for debugging
+            logger.info(f"Populating VPN_SERVERS with SERVER_HOST={self.SERVER_HOST}, VPN_PORT={self.VPN_PORT}")
+            
             self.VPN_SERVERS = [
                 {
                     "id": "kyber-vpn-main",  # MUST match what the frontend is sending
                     "name": "Servidor Kyber VPN Principal",
                     "location": "Azure VM",
-                    "ip": self.SERVER_HOST,  # Use self.SERVER_HOST
-                    "port": self.VPN_PORT,   # Use self.VPN_PORT
-                    "status": "online",      # Simple string value instead of enum to avoid issues
+                    "ip": self.SERVER_HOST,
+                    "port": self.VPN_PORT,
+                    "status": "online",
                     "latency": 0,
                 }
             ]
-            print(f"Populated VPN_SERVERS with: {self.VPN_SERVERS}")
+            # Enhanced logging for Azure diagnostics
+            logger.info(f"VPN_SERVERS populated: {self.VPN_SERVERS}")
 
     @validator("CORS_ORIGINS", pre=True)
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
@@ -75,11 +54,5 @@ class Settings(BaseSettings):
             return v
         raise ValueError(v)
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
 settings = Settings()
-
-# ... (ensure vpn_client and other parts of your app use this 'settings' instance)
 
