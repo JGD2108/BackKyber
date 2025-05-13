@@ -7,7 +7,7 @@ incluyendo parámetros para la VPN, seguridad y red.
 import os
 from typing import List, Union, Optional, Dict, Any
 from pydantic import BaseSettings, AnyHttpUrl, validator
-
+from enum import Enum
 # Assuming ServerStatus is an Enum, you need to define or import it.
 # For example, if it's in your models:
 from app.models.schemas import ServerStatus # Or wherever ServerStatus is defined

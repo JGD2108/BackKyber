@@ -30,22 +30,35 @@ app = FastAPI(
 )
 
 # Configurar CORS para permitir solicitudes desde el frontend y Azure VM
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://frontkyber.vercel.app", 
-        "http://localhost:3000",
-        "https://20.83.144.149",
+# Azure Best Practice: Secure CORS Configuration
+import os
+
+# Define allowed origins based on environment
+allowed_origins = [
+    "https://frontkyber.vercel.app", 
+    "http://localhost:3000",
+    "https://20.83.144.149"
+]
+
+# Add additional origins only in non-production environments
+if os.environ.get("ENVIRONMENT", "development").lower() != "production":
+    logger.warning("Using development CORS settings - not recommended for production")
+    allowed_origins.extend([
         "http://20.83.144.149",
         "https://20.83.144.149:8000",
         "http://20.83.144.149:8000",
-        "https://20.83.144.149:8080",  # Add this line
-        "http://20.83.144.149:8080",   # Add this line
-        "*"                              # Allow all origins for testing (remove in production)
-    ],
+        "https://20.83.144.149:8080",
+        "http://20.83.144.149:8080"
+    ])
+    # Only add wildcard in development
+    allowed_origins.append("*")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     expose_headers=["Content-Type", "X-Requested-With", "Authorization"]
 )
 
