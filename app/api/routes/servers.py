@@ -5,7 +5,7 @@ Este módulo implementa los endpoints relacionados con la consulta
 y administración del servidor VPN principal.
 """
 from fastapi import APIRouter, HTTPException, status
-from typing import Dict, Any
+from typing import Dict, Any, List
 import functools
 import logging
 import os
@@ -13,7 +13,7 @@ import sys  # Add this import
 import traceback
 
 from app.core.config import settings
-from app.models.schemas import Server, ServerStatus
+from app.models.schemas import Server, ServerStatus, ServerResponse
 from app.network.vpn import vpn_server  # Importar la instancia global del servidor
 
 # Setup Azure Application Insights if in Azure environment
@@ -331,3 +331,31 @@ async def get_kyber_info():
             "implementation_type": "Simulación educativa",
             "error": str(e)
         }
+
+@router.get("/list", response_model=List[ServerResponse])
+@azure_vm_safe_endpoint
+async def get_servers():
+    """
+    Get list of available VPN servers.
+    Always returns an array, even if only one server is available.
+    """
+    try:
+        # Your existing server logic here
+        servers = [
+            {
+                "id": "1",
+                "name": "Azure US East",
+                "location": "US East",
+                "ip": "20.83.144.149",
+                "port": 443,
+                "load": 35,
+                "ping": 65,
+                "status": "online"
+            }
+        ]
+        
+        logger.info(f"Returning {len(servers)} servers")
+        return servers
+    except Exception as e:
+        logger.error(f"Error retrieving servers: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")

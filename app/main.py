@@ -8,6 +8,10 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # Corrected - no Response here
 from starlette.responses import Response  # Add this line to import Response from the correct module
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+import traceback
+import json
 
 from app.core.config import settings
 # Import all routers
@@ -265,3 +269,70 @@ async def startup_event():
     # Iniciar tarea en segundo plano
     import asyncio
     asyncio.create_task(keep_alive())
+
+# Add these exception handlers before your app routes
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    """Enhanced HTTP exception handler with Azure-friendly logging"""
+    logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
+    return Response(
+        status_code=exc.status_code,
+        content=json.dumps({"error": exc.detail, "status_code": exc.status_code}),
+        media_type="application/json"
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """Detailed validation error handler with Azure-friendly logging"""
+    error_detail = str(exc)
+    logger.error(f"Validation Error: {error_detail}")
+    
+    return Response(
+        status_code=422,
+        content=json.dumps({
+            "error": "Validation Error",
+            "detail": error_detail,
+            "status_code": 422
+        }),
+        media_type="application/json"
+    )
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request, exc):
+    """Catch-all exception handler with Azure-friendly error format"""
+    error_detail = str(exc)
+    trace = traceback.format_exc()
+    logger.error(f"Unhandled Exception: {error_detail}\n{trace}")
+    
+    return Response(
+        status_code=500,
+        content=json.dumps({
+            "error": "Internal Server Error",
+            "detail": error_detail if app.debug else "An unexpected error occurred",
+            "status_code": 500
+        }),
+        media_type="application/json"
+    )
+
+# Add this after your existing middleware
+@app.middleware("http")
+async def add_response_headers(request, call_next):
+    """
+    Add Azure-recommended response headers for better connection stability.
+    """
+    try:
+        response = await call_next(request)
+        
+        # Add Azure recommended headers for stable connections
+        response.headers["X-Azure-Ref"] = f"kyber-{id(response)}"
+        response.headers["Connection"] = "keep-alive"
+        response.headers["Keep-Alive"] = "timeout=5, max=1000"
+        
+        return response
+    except Exception as e:
+        logger.error(f"Middleware error: {str(e)}", exc_info=True)
+        return Response(
+            status_code=500,
+            content=json.dumps({"error": "Internal Server Error"}),
+            media_type="application/json"
+        )
