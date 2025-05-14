@@ -4,23 +4,27 @@ Punto de entrada principal para la API de Kyber VPN.
 Este módulo inicializa la aplicación FastAPI y registra todas las rutas
 para la gestión de la VPN educativa resistente a ataques cuánticos.
 """
-import logging
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # Corrected - no Response here
-from starlette.responses import Response  # Add this line to import Response from the correct module
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-import traceback
+# Standard library imports
+import asyncio
 import json
-import asyncio  # Ensure asyncio is imported
+import logging
+import os
+import traceback
 
+# Third-party imports
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# Local application imports
 from app.core.config import settings
-# Import all routers
 from app.api.routes.servers import router as servers_router
 from app.api.routes.connection import router as connection_router
 from app.api.routes.education import router as education_router
-from app.api.routes.chat import router as chat_router  # New import
-from app.network.vpn import vpn_server as global_vpn_server  # Import the server instance
+from app.api.routes.chat import router as chat_router
+from app.network.vpn import vpn_server as global_vpn_server
 
 # Configurar logging
 logging.basicConfig(
