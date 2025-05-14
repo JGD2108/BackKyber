@@ -36,41 +36,18 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Replace your current CORS configuration with this simplified version
-
 # Azure Best Practice: Only allow your production frontend
 allowed_origins = [
     "https://frontkyber.vercel.app"
 ]
-
-# Update the middleware to echo the correct origin
-@app.middleware("http")
-async def options_middleware(request, call_next):
-    origin = request.headers.get("origin")
-    # Only allow if origin is in allowed_origins
-    allow_origin = origin if origin in allowed_origins else None
-
-    if request.method == "OPTIONS":
-        headers = {
-            "Access-Control-Allow-Origin": allow_origin or "",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With, Origin, x-request-id",
-            "Access-Control-Max-Age": "86400",
-        }
-        return Response(status_code=204, headers=headers)
-    response = await call_next(request)
-    if allow_origin:
-        response.headers["Access-Control-Allow-Origin"] = allow_origin
-        response.headers["Vary"] = "Origin"
-    return response
 
 # Configure the standard CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,  # Set to True if you use cookies or Authorization headers
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "x-request-id"],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=["Content-Type", "X-Requested-With", "Authorization", "x-request-id"],
     max_age=86400  # Cache preflight requests for 24 hours (Azure recommended)
 )
