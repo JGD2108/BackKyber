@@ -138,11 +138,26 @@ class UserAuthResponse(BaseModel):
     user_data: Optional[Dict[str, Any]] = Field(None, description="Datos del usuario autenticado")
 
 class ServerResponse(BaseModel):
-    """Respuesta para información de servidor VPN."""
-    id: str
-    name: str
-    location: str
-    ip: str
-    port: int
-    status: str
-    latency: int
+    """Modelo para respuesta de información de servidor VPN."""
+    id: str = Field(..., description="Identificador único del servidor")
+    name: str = Field(..., description="Nombre descriptivo del servidor")
+    location: str = Field(..., description="Ubicación geográfica del servidor")
+    ip: str = Field(..., description="Dirección IP del servidor")
+    port: int = Field(..., description="Puerto del servidor", gt=0, lt=65536)
+    load: int = Field(0, description="Carga actual del servidor (%)", ge=0, le=100)
+    ping: int = Field(0, description="Tiempo de respuesta en ms", ge=0)
+    status: str = Field(..., description="Estado actual del servidor")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "id": "1",
+                "name": "Azure US East",
+                "location": "US East",
+                "ip": "20.83.144.149",
+                "port": 443,
+                "load": 35,
+                "ping": 65,
+                "status": "online"
+            }
+        }

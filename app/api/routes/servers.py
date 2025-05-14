@@ -14,7 +14,7 @@ import traceback
 import datetime  # Add this import
 
 from app.core.config import settings
-from app.models.schemas import Server, ServerStatus
+from app.models.schemas import Server, ServerStatus, ServerResponse
 from app.network.vpn import vpn_server  # Importar la instancia global del servidor
 
 # Setup Azure Application Insights if in Azure environment
