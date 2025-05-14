@@ -255,17 +255,58 @@ async def startup_event():
     
     # Iniciar tarea en segundo plano
     import asyncio
+    import platform
+    import time
     asyncio.create_task(keep_alive())
 
-    # Start the VPN Server with enhanced logging
-    logger.info("Attempting to start Kyber VPN server...")
+    # Start the VPN Server with enhanced privilege checking
+    logger.info("Checking system capabilities for VPN server...")
     try:
         # Check if we're in cloud environment
         is_cloud_env = bool(os.environ.get("RENDER") or
                            os.environ.get("VERCEL") or
                            os.environ.get("HEROKU_APP_ID"))
 
-        if not is_cloud_env:
+        # Check for admin privileges - crucial for TUN interface creation
+        is_admin = False
+        try:
+            if platform.system().lower() == "windows":
+                import ctypes
+                is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+            else:
+                # In Unix/Linux, check if we're root
+                is_admin = os.geteuid() == 0
+        except Exception as e:
+            logger.warning(f"Failed to check admin privileges: {str(e)}")
+            is_admin = False
+
+        # Check TUN/TAP capability
+        can_create_tun = False
+        try:
+            if platform.system().lower() == "linux":
+                tun_exists = os.path.exists("/dev/net/tun")
+                tun_access = os.access("/dev/net/tun", os.R_OK | os.W_OK)
+                can_create_tun = tun_exists and tun_access and is_admin
+            elif platform.system().lower() == "windows":
+                # Windows TAP adapter check...
+                import subprocess
+                try:
+                    proc = subprocess.run(
+                        "netsh interface show interface", 
+                        capture_output=True, 
+                        text=True, 
+                        shell=True
+                    )
+                    can_create_tun = "TAP-Windows" in proc.stdout and is_admin
+                except Exception:
+                    can_create_tun = False
+        except Exception as e:
+            logger.warning(f"Failed to check TUN/TAP capability: {str(e)}")
+            can_create_tun = False
+
+        # Only attempt to start real VPN if we have required privileges
+        if is_admin and can_create_tun and not is_cloud_env:
+            logger.info("System has required privileges for VPN functionality. Starting VPN server...")
             # Log server attributes before starting
             logger.info(f"VPN server object type: {type(global_vpn_server)}")
             logger.info(f"VPN server port: {global_vpn_server.port}")
@@ -277,19 +318,30 @@ async def startup_event():
             # Add a callback to handle task exceptions
             def handle_vpn_task_exception(task):
                 try:
-                    # This will re-raise any exception that occurred
                     task.result()
+                except PermissionError as e:
+                    logger.error(f"VPN server failed due to insufficient permissions: {str(e)}")
+                    logger.info("To run with full VPN functionality, restart the service with root privileges: sudo systemctl restart kyber-api")
                 except Exception as e:
                     logger.error(f"VPN server task failed with: {str(e)}", exc_info=True)
             
             vpn_task.add_done_callback(handle_vpn_task_exception)
             logger.info("Kyber VPN server startup task created.")
         else:
-            logger.warning("Kyber VPN server not started: Cloud environment detected (simulation mode).")
-    except AttributeError as e:
-        logger.error(f"Failed to start VPN server: Method not found on vpn_server instance. Details: {e}", exc_info=True)
+            # Provide detailed reason why we're in simulation mode
+            if is_cloud_env:
+                reason = "cloud environment detected"
+            elif not is_admin:
+                reason = "insufficient privileges"
+                logger.info("To run with full VPN functionality, restart the service with: sudo systemctl restart kyber-api")
+            elif not can_create_tun:
+                reason = "missing TUN/TAP capability"
+            else:
+                reason = "unknown restriction"
+                
+            logger.warning(f"Kyber VPN operating in SIMULATION mode ({reason})")
     except Exception as e:
-        logger.error(f"Error during Kyber VPN server startup: {e}", exc_info=True)
+        logger.error(f"Error during VPN server startup checks: {e}", exc_info=True)
 
 @app.on_event("shutdown")
 async def shutdown_event():
