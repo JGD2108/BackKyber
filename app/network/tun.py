@@ -94,8 +94,15 @@ class TunDevice:
     async def _create_interface_linux(self, ip_address: str, netmask: str) -> bool:
         """Implementación específica para Linux"""
         try:
-            # Abrir el dispositivo TUN/TAP
-            self.file = open("/dev/net/tun", "rb+")
+            # Abrir el dispositivo TUN/TAP usando os.open para obtener un descriptor de archivo crudo
+            # os.O_RDWR: Abrir para lectura y escritura
+            # os.O_NONBLOCK: Abrir en modo no bloqueante (opcional aquí, ya que se establece más tarde en start())
+            fd = os.open("/dev/net/tun", os.O_RDWR) 
+            
+            # Envolver el descriptor de archivo con un objeto de archivo de Python
+            # "r+b": modo lectura/escritura binario
+            # buffering=0: I/O sin búfer, crucial para dispositivos
+            self.file = os.fdopen(fd, "r+b", buffering=0)
             
             # Configurar la interfaz
             flags = IFF_NO_PI
@@ -104,9 +111,9 @@ class TunDevice:
             else:
                 flags |= IFF_TAP
             
-            # Aplicar configuración con ioctl
+            # Aplicar configuración con ioctl usando el descriptor de archivo (fileno)
             ifr = struct.pack('16sH', self.name.encode(), flags)
-            fcntl.ioctl(self.file, TUNSETIFF, ifr)
+            fcntl.ioctl(self.file.fileno(), TUNSETIFF, ifr) # Usar self.file.fileno()
             
             # Configurar la dirección IP y MTU con comandos de sistema
             await self._run_cmd(f"ip link set dev {self.name} up mtu {self.mtu}")
