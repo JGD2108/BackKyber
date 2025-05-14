@@ -136,3 +136,13 @@ class UserAuthResponse(BaseModel):
     token: Optional[str] = Field(None, description="Token de sesión JWT")
     message: str = Field(..., description="Mensaje informativo")
     user_data: Optional[Dict[str, Any]] = Field(None, description="Datos del usuario autenticado")
+
+class ServerResponse(BaseModel):
+    """Respuesta para información de servidor VPN."""
+    id: str
+    name: str
+    location: str
+    ip: str
+    port: int
+    status: str
+    latency: int
