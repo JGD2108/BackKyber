@@ -4,6 +4,7 @@ Rutas de la API para gestión de conexiones VPN.
 Este módulo implementa los endpoints para conectar/desconectar
 la VPN y obtener su estado actual.
 """
+from asyncio.log import logger
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
@@ -11,40 +12,27 @@ from app.models.schemas import ConnectionRequest, ConnectionResponse, VpnStatus
 from app.network.vpn_client import vpn_client  # Usar la implementación real
 
 router = APIRouter()
-
-@router.post("/connect", response_model=ConnectionResponse)
+# Añadir logs detallados para diagnóstico
+@router.post("/connect")
 async def connect_to_vpn(request: ConnectionRequest):
-    """
-    Establece una conexión VPN con el servidor especificado.
+    logger.info(f"Intentando conectar a VPN con servidor: {request.serverId}")
     
-    Args:
-        request: Solicitud con el ID del servidor
+    try:
+        server = next((s for s in settings.VPN_SERVERS if s["id"] == request.serverId), None)
+        if not server:
+            logger.error(f"Servidor no encontrado: {request.serverId}")
+            raise HTTPException(status_code=404, detail="Servidor no encontrado")
         
-    Returns:
-        Resultado de la operación de conexión
-    """
-    # Buscar información del servidor
-    from app.core.config import settings
-    
-    print(f"Backend: Received connect request for serverId: {request.serverId}") # Temporary debug log
-    
-    server = None
-    for s in settings.VPN_SERVERS:
-        if s["id"] == request.serverId:
-            server = s
-            break
-    
-    if not server:
-        raise HTTPException(status_code=404, detail=f"Servidor con ID {request.serverId} no encontrado")
-    
-    # Conectar usando la implementación real
-    result = await vpn_client.connect(server["ip"], server["port"])
-    
-    return ConnectionResponse(
-        success=result["success"],
-        message=result["message"],
-        vpnIp=result.get("vpnIp")
-    )
+        logger.info(f"Conectando a {server['ip']}:{server['port']}")
+        result = await vpn_client.connect(server["ip"], server["port"])
+        
+        if not result["success"]:
+            logger.error(f"Conexión fallida: {result['message']}")
+        
+        return ConnectionResponse(**result)
+    except Exception as e:
+        logger.error(f"Error en conexión VPN: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al conectar")
 
 @router.post("/disconnect", response_model=ConnectionResponse)
 async def disconnect_from_vpn():
