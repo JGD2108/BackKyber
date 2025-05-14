@@ -40,22 +40,6 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Azure Best Practice: Only allow your production frontend
-allowed_origins = [
-    "https://frontkyber.vercel.app"
-]
-
-# Configure the standard CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,  # Set to True if you use cookies or Authorization headers
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Type", "X-Requested-With", "Authorization", "x-request-id"],
-    max_age=86400  # Cache preflight requests for 24 hours (Azure recommended)
-)
-
 # Registrar rutas
 app.include_router(servers_router, prefix="/api/servers", tags=["servers"])
 app.include_router(connection_router, prefix="/api", tags=["connection"])
