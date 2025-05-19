@@ -120,22 +120,22 @@ def configure_azure_environment():
     try:
         # 1. Enable IP forwarding for VPN traffic
         if os_name == "linux":
-            subprocess.run(["sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
+            subprocess.run(["/usr/bin/sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
             
             # Make IP forwarding persistent
-            subprocess.run(["sudo", "sh", "-c", "echo net.ipv4.ip_forward=1 > /etc/sysctl.d/99-vpn-forward.conf"], check=True)
-            subprocess.run(["sudo", "sysctl", "-p", "/etc/sysctl.d/99-vpn-forward.conf"], check=True)
+            subprocess.run(["/usr/bin/sudo", "sh", "-c", "echo net.ipv4.ip_forward=1 > /etc/sysctl.d/99-vpn-forward.conf"], check=True)
+            subprocess.run(["/usr/bin/sudo", "sysctl", "-p", "/etc/sysctl.d/99-vpn-forward.conf"], check=True)
             
             # 2. Configure iptables for NAT (required for VPN)
             subprocess.run([
-                "sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", 
+                "/usr/bin/sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", 
                 "-s", "10.8.0.0/24", "-o", "eth0", "-j", "MASQUERADE"
             ], check=True)
             
             # Make iptables rules persistent
             try:
-                subprocess.run(["sudo", "apt-get", "install", "-y", "iptables-persistent"], check=True)
-                subprocess.run(["sudo", "netfilter-persistent", "save"], check=True)
+                subprocess.run(["/usr/bin/sudo", "apt-get", "install", "-y", "iptables-persistent"], check=True)
+                subprocess.run(["/usr/bin/sudo", "netfilter-persistent", "save"], check=True)
             except Exception as e:
                 logger.warning(f"Could not persist iptables rules: {e}")
         

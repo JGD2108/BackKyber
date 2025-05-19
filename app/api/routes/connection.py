@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from app.models.schemas import ConnectionRequest, ConnectionResponse, VpnStatus
 from app.network.vpn_client import vpn_client  # Usar la implementación real
+from app.core.config import settings
 
 router = APIRouter()
 # Añadir logs detallados para diagnóstico
