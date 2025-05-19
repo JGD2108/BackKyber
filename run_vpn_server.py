@@ -110,15 +110,77 @@ def check_requirements():
     return True
 
 def configure_azure_environment():
-    """Configure Azure VM environment for optimal VPN performance."""
+    """Configure Azure VM environment for optimal VPN performance with Kyber."""
     if not is_azure_vm():
         return True
         
-    logger.info("Configuring Azure environment for VPN...")
+    logger.info("Configuring Azure environment for VPN with Kyber...")
     os_name = platform.system().lower()
     
     try:
-        # 1. Enable IP forwarding for VPN traffic
+        # 1. Install liboqs and dependencies for real Kyber
+        if os_name == "linux":
+            logger.info("Installing liboqs and dependencies")
+            try:
+                # Install build dependencies
+                subprocess.run([
+                    "/usr/bin/sudo", "apt-get", "update"
+                ], check=True)
+                
+                subprocess.run([
+                    "/usr/bin/sudo", "apt-get", "install", "-y", 
+                    "build-essential", "cmake", "ninja-build", "python3-pip",
+                    "libssl-dev", "python3-pytest", "python3-pytest-xdist",
+                    "unzip", "xsltproc", "doxygen", "graphviz"
+                ], check=True)
+                
+                # Check if liboqs is already installed
+                liboqs_check = subprocess.run(
+                    ["pip3", "show", "liboqs"], 
+                    capture_output=True, 
+                    text=True
+                )
+                
+                if "not found" in liboqs_check.stderr or liboqs_check.returncode != 0:
+                    logger.info("Installing liboqs")
+                    # Clone and build liboqs
+                    subprocess.run([
+                        "git", "clone", "--depth", "1", 
+                        "https://github.com/open-quantum-safe/liboqs.git",
+                        "/tmp/liboqs"
+                    ], check=True)
+                    
+                    # Build and install
+                    subprocess.run([
+                        "mkdir", "-p", "/tmp/liboqs/build"
+                    ], check=True)
+                    
+                    subprocess.run([
+                        "cmake", "-GNinja", "-DBUILD_SHARED_LIBS=ON",
+                        "-S", "/tmp/liboqs", "-B", "/tmp/liboqs/build"
+                    ], check=True)
+                    
+                    subprocess.run([
+                        "ninja", "-j", "4"
+                    ], cwd="/tmp/liboqs/build", check=True)
+                    
+                    subprocess.run([
+                        "/usr/bin/sudo", "ninja", "install"
+                    ], cwd="/tmp/liboqs/build", check=True)
+                    
+                    # Install Python wrapper
+                    subprocess.run([
+                        "/usr/bin/sudo", "pip3", "install", "/tmp/liboqs/build/python"
+                    ], check=True)
+                    
+                    logger.info("liboqs installed successfully")
+                else:
+                    logger.info("liboqs already installed")
+            except Exception as e:
+                logger.warning(f"Could not install liboqs: {e}")
+                logger.warning("Falling back to simulated Kyber mode")
+        
+        # 2. Enable IP forwarding for VPN traffic
         if os_name == "linux":
             subprocess.run(["/usr/bin/sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
             
@@ -126,18 +188,36 @@ def configure_azure_environment():
             subprocess.run(["/usr/bin/sudo", "sh", "-c", "echo net.ipv4.ip_forward=1 > /etc/sysctl.d/99-vpn-forward.conf"], check=True)
             subprocess.run(["/usr/bin/sudo", "sysctl", "-p", "/etc/sysctl.d/99-vpn-forward.conf"], check=True)
             
-            # 2. Configure iptables for NAT (required for VPN)
+            # 3. Configure iptables for NAT (required for VPN)
             subprocess.run([
                 "/usr/bin/sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", 
                 "-s", "10.8.0.0/24", "-o", "eth0", "-j", "MASQUERADE"
             ], check=True)
             
-            # Make iptables rules persistent
+            # 4. Make iptables rules persistent
             try:
                 subprocess.run(["/usr/bin/sudo", "apt-get", "install", "-y", "iptables-persistent"], check=True)
                 subprocess.run(["/usr/bin/sudo", "netfilter-persistent", "save"], check=True)
             except Exception as e:
                 logger.warning(f"Could not persist iptables rules: {e}")
+            
+            # 5. Install OpenVPN if not already installed
+            try:
+                openvpn_check = subprocess.run(
+                    ["dpkg", "-l", "openvpn"], 
+                    capture_output=True, 
+                    text=True
+                )
+                
+                if "no packages found" in openvpn_check.stdout or openvpn_check.returncode != 0:
+                    logger.info("Installing OpenVPN")
+                    subprocess.run([
+                        "/usr/bin/sudo", "apt-get", "install", "-y", "openvpn"
+                    ], check=True)
+                else:
+                    logger.info("OpenVPN already installed")
+            except Exception as e:
+                logger.warning(f"Could not install OpenVPN: {e}")
         
         return True
     except Exception as e:

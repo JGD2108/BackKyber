@@ -382,25 +382,3 @@ async def generic_exception_handler(request, exc):
         media_type="application/json"
     )
 
-# Add this after your existing middleware
-@app.middleware("http")
-async def add_response_headers(request, call_next):
-    """
-    Add Azure-recommended response headers for better connection stability.
-    """
-    try:
-        response = await call_next(request)
-        
-        # Add Azure recommended headers for stable connections
-        response.headers["X-Azure-Ref"] = f"kyber-{id(response)}"
-        response.headers["Connection"] = "keep-alive"
-        response.headers["Keep-Alive"] = "timeout=5, max=1000"
-        
-        return response
-    except Exception as e:
-        logger.error(f"Middleware error: {str(e)}", exc_info=True)
-        return Response(
-            status_code=500,
-            content=json.dumps({"error": "Internal Server Error"}),
-            media_type="application/json"
-        )
