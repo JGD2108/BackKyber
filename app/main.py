@@ -16,7 +16,6 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.responses import Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.cors import CORSMiddleware
 
 # Local application imports
 from app.core.config import settings
@@ -45,18 +44,6 @@ app.include_router(servers_router, prefix="/api/servers", tags=["servers"])
 app.include_router(connection_router, prefix="/api", tags=["connection"])
 app.include_router(education_router, prefix="/api/education", tags=["education"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])  # Nueva ruta
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Length", "Content-Range"],
-    # Important: don't send CORS headers if NGINX has already sent them
-    skip_if_header_present="x-azure-client"  # Skip CORS if NGINX already handled it
-)
 
 @app.get("/")
 async def root():
