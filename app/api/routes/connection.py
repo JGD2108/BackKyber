@@ -7,10 +7,13 @@ la VPN y obtener su estado actual.
 from asyncio.log import logger
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
+import logging
 
 from app.models.schemas import ConnectionRequest, ConnectionResponse, VpnStatus
 from app.network.vpn_client import vpn_client  # Usar la implementación real
 from app.core.config import settings
+
+logger = logging.getLogger("kyber-vpn")
 
 router = APIRouter()
 # Añadir logs detallados para diagnóstico
